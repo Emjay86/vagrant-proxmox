@@ -15,6 +15,7 @@ module VagrantPlugins
       attr_accessor :task_timeout
       attr_accessor :task_status_check_interval
       attr_accessor :imgcopy_timeout
+      attr_accessor :verify_ssl
 
       def initialize(api_url, opts = {})
         @api_url = api_url
@@ -22,6 +23,7 @@ module VagrantPlugins
         @task_timeout = opts[:task_timeout] || 60
         @task_status_check_interval = opts[:task_status_check_interval] || 2
         @imgcopy_timeout = opts[:imgcopy_timeout] || 120
+        @verify_ssl = opts[:verify_ssl]
       end
 
       def login(username: required('username'), password: required('password'))
@@ -139,10 +141,19 @@ module VagrantPlugins
         free_vm_ids.empty? ? raise(VagrantPlugins::Proxmox::Errors::NoVmIdAvailable) : free_vm_ids.first
       end
 
-      def get_qemu_template_id(template)
+      def get_qemu_vm_data()
         response = get '/cluster/resources?type=vm'
-        found_ids = response[:data].select { |vm| vm[:type] == 'qemu' }.select { |vm| vm[:template] == 1 }.select { |vm| vm[:name] == template }.map { |vm| vm[:vmid] }
+        response[:data]
+      end
+
+      def get_qemu_template_id(data, template)
+        found_ids = data.select { |vm| vm[:type] == 'qemu' }.select { |vm| vm[:template] == 1 }.select { |vm| vm[:name] == template }.map { |vm| vm[:vmid] }
         found_ids.empty? ? raise(VagrantPlugins::Proxmox::Errors::NoTemplateAvailable) : found_ids.first
+      end
+
+      def get_qemu_template_residing_node(data, template)
+        node = data.select { |vm| vm[:type] == 'qemu' }.select { |vm| vm[:template] == 1 }.select { |vm| vm[:name] == template }.map { |vm| vm[:node] }
+        node.empty? ? raise(VagrantPlugins::Proxmox::Errors::NoTemplateAvailable) : node.first
       end
 
       def upload_file(file, content_type: required('content_type'), node: required('node'), storage: required('storage'), replace: false)
@@ -217,7 +228,7 @@ module VagrantPlugins
       private
 
       def get(path)
-        response = RestClient.get "#{api_url}#{path}", cookies: { PVEAuthCookie: ticket }
+        response = RestClient::Request.execute(:method => :get, :url => "#{api_url}#{path}", :headers => { cookies: { PVEAuthCookie: ticket } }, :verify_ssl => verify_ssl )
         JSON.parse response.to_s, symbolize_names: true
       rescue RestClient::NotImplemented
         raise ApiError::NotImplemented
@@ -232,7 +243,7 @@ module VagrantPlugins
       private
 
       def delete(path, _params = {})
-        response = RestClient.delete "#{api_url}#{path}", headers
+        response = RestClient::Request.execute(:method => :delete, :url => "#{api_url}#{path}", :headers => headers, :verify_ssl => verify_ssl)
         JSON.parse response.to_s, symbolize_names: true
       rescue RestClient::Unauthorized
         raise ApiError::UnauthorizedError
@@ -247,7 +258,7 @@ module VagrantPlugins
       private
 
       def post(path, params = {})
-        response = RestClient.post "#{api_url}#{path}", params, headers
+        response = RestClient::Request.execute(:method => :post, :url => "#{api_url}#{path}", :payload => params, :headers => headers, :verify_ssl => verify_ssl)
         JSON.parse response.to_s, symbolize_names: true
       rescue RestClient::Unauthorized
         raise ApiError::UnauthorizedError

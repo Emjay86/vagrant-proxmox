@@ -17,7 +17,7 @@ module VagrantPlugins
             }
             return ips.first[1][:host_ip] if not ips.empty?
 
-            node = env[:proxmox_selected_node]
+            node = env[:machine].id.split("/").first
             vm_id = env[:machine].id.split("/").last
 
             connection(env).qemu_agent_get_vm_ip(node, vm_id)
