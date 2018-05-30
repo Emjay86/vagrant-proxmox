@@ -77,6 +77,15 @@ module VagrantPlugins
       class InternalPluginError < VagrantProxmoxError
         error_key :internal_plugin_error
       end
+
+      # Internal Plugin Error (Bug)
+      class VMNotPingable < VagrantProxmoxError
+        error_key :vm_not_pingable
+      end
+
+      class NoValidIPv4 < VagrantProxmoxError
+        error_key :no_valid_ipv4
+      end
     end
   end
 end

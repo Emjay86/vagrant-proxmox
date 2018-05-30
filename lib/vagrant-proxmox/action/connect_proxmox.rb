@@ -15,12 +15,13 @@ module VagrantPlugins
 					begin
 						config = env[:machine].provider_config
 						connection = Connection.new config.endpoint,
+																				env[:ui],
 																				vm_id_range: config.vm_id_range,
 																				task_timeout: config.task_timeout,
 																				task_status_check_interval: config.task_status_check_interval,
 																				imgcopy_timeout: config.imgcopy_timeout,
 																				verify_ssl: config.verify_ssl
-						connection.login username: config.user_name, password: config.password
+						connection.login username: config.user_name, password: config.password, vagrantfile_path: env[:root_path]
 						env[:proxmox_connection] = connection
 					rescue => e
 						raise Errors::CommunicationError, error_msg: e.message

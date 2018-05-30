@@ -2,6 +2,7 @@ require 'vagrant-proxmox/proxmox/errors'
 require 'rest-client'
 require 'retryable'
 require 'required_parameters'
+require 'date'
 
 module VagrantPlugins
   module Proxmox
@@ -17,23 +18,57 @@ module VagrantPlugins
       attr_accessor :imgcopy_timeout
       attr_accessor :verify_ssl
 
-      def initialize(api_url, opts = {})
+      def initialize(api_url, ui, opts = {})
         @api_url = api_url
         @vm_id_range = opts[:vm_id_range] || (900..999)
         @task_timeout = opts[:task_timeout] || 60
         @task_status_check_interval = opts[:task_status_check_interval] || 2
         @imgcopy_timeout = opts[:imgcopy_timeout] || 120
         @verify_ssl = opts[:verify_ssl]
+        @ui = ui
       end
 
-      def login(username: required('username'), password: required('password'))
-        response = post '/access/ticket', username: username, password: password
-        @ticket = response[:data][:ticket]
-        @csrf_token = response[:data][:CSRFPreventionToken]
-      rescue ApiError::ServerError
-        raise ApiError::InvalidCredentials
-      rescue => x
-        raise ApiError::ConnectionError, x.message
+      def login(username: required('username'), password: required('password'), vagrantfile_path: required('vagrantfile_path'))
+        if $ticket.nil? || $csrf_token.nil?
+          if File.file?("#{vagrantfile_path}/.proxmox_token")
+            json = File.read("#{vagrantfile_path}/.proxmox_token")
+            data = JSON.parse(json)
+            token_age = Time.parse(data['date'])
+            max_token_age = Time.now.getutc - (2 * 60 * 60)
+
+            if  max_token_age.to_i > token_age.to_i
+              @ui.warn "Token expired"
+              get_new_login username: username, password: password, vagrantfile_path: vagrantfile_path
+            else
+              $ticket = data['ticket']
+              $csrf_token = data['csrf_token']
+            end
+          else
+            get_new_login username: username, password: password, vagrantfile_path: vagrantfile_path
+          end
+        end
+      end
+
+      def get_new_login(username: required('username'), password: required('password'), vagrantfile_path: required('vagrantfile_path'))
+        begin
+          response = post '/access/ticket', username: username, password: password
+          date = Time.now.getutc
+          $ticket = response[:data][:ticket]
+          $csrf_token = response[:data][:CSRFPreventionToken]
+          json = {
+            'date' => date,
+            'ticket' => $ticket,
+            'csrf_token' => $csrf_token
+          }
+
+          File.open("#{vagrantfile_path}/.proxmox_token", "w") do |file|
+            file.puts(JSON.dump(json))
+          end
+        rescue ApiError::ServerError
+          raise ApiError::InvalidCredentials
+        rescue => x
+          raise ApiError::ConnectionError, x.message
+        end
       end
 
       def get_node_list
@@ -66,6 +101,9 @@ module VagrantPlugins
           retryable(on: VagrantPlugins::Proxmox::ProxmoxTaskNotFinished,
                     tries: timeout / task_status_check_interval + 1,
                     sleep: task_status_check_interval) do
+            log = get_task_log task_upid
+            @ui.detail log.last[:t] if log.last[:t] != "no content"
+            # print_task_log log
             exit_status = get_task_exitstatus task_upid
             exit_status.nil? ? raise(VagrantPlugins::Proxmox::ProxmoxTaskNotFinished) : exit_status
           end
@@ -107,7 +145,8 @@ module VagrantPlugins
         wait_for_completion task_response: response, timeout_message: 'vagrant_proxmox.errors.create_vm_timeout'
       end
 
-      def get_vm_config(node: required('node'), vm_id: required('node'), vm_type: required('node'))
+      def get_vm_config(vm_id: required('node'), vm_type: required('node'))
+        node = get_vm_info(vm_id)[:node]
         response = get "/nodes/#{node}/#{vm_type}/#{vm_id}/config"
         response = response[:data]
         response.empty? ? raise(VagrantPlugins::Proxmox::Errors::VMConfigError) : response
@@ -156,6 +195,12 @@ module VagrantPlugins
         node.empty? ? raise(VagrantPlugins::Proxmox::Errors::NoTemplateAvailable) : node.first
       end
 
+      def get_qemu_vm_residing_node(data, vm_id)
+        # node = data.select { |vm| vm[:type] == 'qemu' }.select { |vm| vm[:vmid] == vm_id }.map { |vm| vm[:node] }
+        node = data.select { |vm| vm[:type] == 'qemu' }.select { |vm| vm[:vmid] == vm_id.to_i }.map { |vm| vm[:node] }
+        node.empty? ? raise(VagrantPlugins::Proxmox::Errors::NoVmIdAvailable) : node.first
+      end
+
       def upload_file(file, content_type: required('content_type'), node: required('node'), storage: required('storage'), replace: false)
         delete_file(filename: file, content_type: content_type, node: node, storage: storage) if replace
         unless is_file_in_storage? filename: file, node: node, storage: storage
@@ -182,25 +227,70 @@ module VagrantPlugins
       end
 
       def qemu_agent_ping(node, vm_id)
-        post "/nodes/#{node}/qemu/#{vm_id}/agent", command: "ping"
-        true
-      rescue ApiError::ServerError
-        false
+        begin
+          post "/nodes/#{node}/qemu/#{vm_id}/agent", command: "ping"
+        rescue ApiError::ServerError => e
+          raise Errors::VMNotPingable, e.message
+        end
       end
 
       def qemu_agent_get_vm_ip(node, vm_id)
-        if not qemu_agent_ping(node, vm_id)
-          nil
+        qemu_agent_ping(node, vm_id)
+
+        retryException = Class.new StandardError
+
+        response = nil
+        result = nil
+        interfaces = {}
+
+        retryable(on: retryException, tries: 3, sleep: 5) do
+          response = post "/nodes/#{node}/qemu/#{vm_id}/agent", command: "network-get-interfaces"
+          begin
+            result = response[:data][:result]
+              .select { |iface| iface[:name] != 'lo' }
+              .map { |iface| iface[:'ip-addresses'] }
+              .flatten
+              .select { |ip| ip[:'ip-address-type'] == 'ipv4' }
+              .map { |ip| ip[:'ip-address'] }
+              .first
+          rescue NoMethodError
+            interfaces = {}
+            response[:data][:result].each do |x|
+              interfaces[x[:name]] = []
+
+              x[:"ip-addresses"].each do |ip|
+                interfaces[x[:name]].push ip[:"ip-address"]
+              end if x[:"ip-addresses"]
+            end
+            raise VagrantPlugins::Proxmox::Errors::NoValidIPv4.new interfaces: interfaces
+          end
+
+          # The Agent Ping is successful with a IPv6 as well, but we need a valid IPv4 address,
+          # therefor network-get-interfaces could return only a IPv6 address, so we retry to get a valid IPv4 address
+          unless result
+            raise retryException
+          end
         end
 
-        response = post "/nodes/#{node}/qemu/#{vm_id}/agent", command: "network-get-interfaces"
-        response[:data][:result]
-          .select { |iface| iface[:name] != 'lo' }
-          .map { |iface| iface[:'ip-addresses'] }
-          .flatten
-          .select { |ip| ip[:'ip-address-type'] == 'ipv4' }
-          .map { |ip| ip[:'ip-address'] }
-          .first
+        result
+
+      rescue StandardError
+        raise VagrantPlugins::Proxmox::Errors::NoValidIPv4.new interfaces: interfaces
+      end
+
+      def get_qemu_current_config(node,vm_id)
+        response = get "/nodes/#{node}/qemu/#{vm_id}/config"
+        response[:data]
+      end
+
+      def find_qemu_vm(name_prefix, vm_name)
+        cluster_data = get_qemu_vm_data()
+        vm_data = cluster_data.select { |vm| vm[:type] == 'qemu' }.select { |vm| vm[:name] == "#{name_prefix}#{vm_name}" }
+        if !vm_data.empty?
+          "#{vm_data.first[:node]}/#{vm_data.first[:id].split('/').last}"
+        else
+          nil
+        end
       end
 
       # This is called every time to retrieve the node and vm_type, hence on large
@@ -225,15 +315,27 @@ module VagrantPlugins
         response[:data][:exitstatus]
       end
 
+      def get_task_log(task_upid)
+        node = /UPID:(.*?):/.match(task_upid)[1]
+        response = get "/nodes/#{node}/tasks/#{task_upid}/log?limit=500"
+        response[:data]
+      end
+
+      def print_task_log(log)
+        log.each do |data|
+          @ui.detail data[:t] if data[:t] != "no content"
+        end
+      end
+
       private
 
       def get(path)
-        response = RestClient::Request.execute(:method => :get, :url => "#{api_url}#{path}", :headers => { cookies: { PVEAuthCookie: ticket } }, :verify_ssl => verify_ssl )
+        response = RestClient::Request.execute(:method => :get, :url => "#{api_url}#{path}", :headers => { cookies: { PVEAuthCookie: $ticket } }, :verify_ssl => verify_ssl )
         JSON.parse response.to_s, symbolize_names: true
       rescue RestClient::NotImplemented
         raise ApiError::NotImplemented
-      rescue RestClient::InternalServerError
-        raise ApiError::ServerError
+      rescue RestClient::InternalServerError => e
+        raise ApiError::ServerError, e.message
       rescue RestClient::Unauthorized
         raise ApiError::UnauthorizedError
       rescue => x
@@ -273,7 +375,7 @@ module VagrantPlugins
       private
 
       def headers
-        ticket.nil? ? {} : { CSRFPreventionToken: csrf_token, cookies: { PVEAuthCookie: ticket } }
+        $ticket.nil? ? {} : { CSRFPreventionToken: $csrf_token, cookies: { PVEAuthCookie: $ticket } }
       end
 
       private

@@ -331,6 +331,16 @@ module VagrantPlugins
       # @return [Boolean]
       attr_accessor :verify_ssl
 
+      # Add another Hard Drive
+      #
+      # @return [Hash]
+      attr_accessor :additional_disks
+
+      # Set VLAN of net0
+      #
+      # @return [Integer]
+      attr_accessor :qemu_vlan
+
       def initialize
         @endpoint = UNSET_VALUE
         @selected_node = UNSET_VALUE
@@ -391,6 +401,8 @@ module VagrantPlugins
         @hostname_append_id = false
         @full_clone = false
         @verify_ssl = true
+        @additional_disks = nil
+        @qemu_vlan = nil
       end
 
       # This is the hook that is called to finalize the object before it is put into use.

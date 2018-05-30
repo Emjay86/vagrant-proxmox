@@ -20,20 +20,31 @@ module VagrantPlugins
 						raise VagrantPlugins::Proxmox::Errors::VMStartError, proxmox_exit_status: e.message
 					end
 
-					env[:ui].info I18n.t('vagrant_proxmox.waiting_for_ssh_connection')
-
 					retryException = Class.new StandardError
+
+					retryable(on: Errors::VMNotPingable,
+										tries: env[:machine].provider_config.task_timeout,
+										sleep: env[:machine].provider_config.task_status_check_interval ) do
+									env[:ui].detail "ping to #{vm_id} on #{node} timed out, retrying..."
+									connection(env).qemu_agent_ping(node, vm_id)
+					end
+
+					env[:ui].info I18n.t('vagrant_proxmox.waiting_for_ssh_connection')
 
 					begin
 						retryable(on: retryException,
 											tries: env[:machine].provider_config.ssh_timeout / env[:machine].provider_config.ssh_status_check_interval + 1,
 											sleep: env[:machine].provider_config.ssh_status_check_interval) do
-							raise retryException unless env[:interrupted] || env[:machine].communicate.ready?
+							env[:ui].detail "Waiting for #{vm_id} on #{node} to become ready for communication..."
+							unless env[:interrupted] || env[:machine].communicate.ready?
+								raise retryException
+							end
 						end
 					rescue retryException
 						raise VagrantPlugins::Proxmox::Errors::SSHError
 					end
 
+					$machine_state_changed = true
 					next_action env
 				end
 

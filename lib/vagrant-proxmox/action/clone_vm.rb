@@ -22,21 +22,20 @@ module VagrantPlugins
 					template_residing_node = nil
 
 					begin
-						# template_vm_id = connection(env).get_qemu_template_id(config.qemu_template)
 						template_data = connection(env).get_qemu_vm_data()
-					rescue StandardError => e
+					rescue VagrantPlugins::Proxmox::ApiError::ServerError => e
 						raise VagrantPlugins::Proxmox::Errors::VMCloneError, proxmox_exit_status: e.message
 					end
 
 					begin
 						template_vm_id = connection(env).get_qemu_template_id(template_data, config.qemu_template)
-					rescue StandardError => e
+					rescue VagrantPlugins::Proxmox::Errors::NoTemplateAvailable => e
 						raise VagrantPlugins::Proxmox::Errors::VMCloneError, proxmox_exit_status: e.message
 					end
 
 					begin
 						template_residing_node = connection(env).get_qemu_template_residing_node(template_data, config.qemu_template)
-					rescue StandardError => e
+					rescue VagrantPlugins::Proxmox::Errors::NoTemplateAvailable => e
 						raise VagrantPlugins::Proxmox::Errors::VMCloneError, proxmox_exit_status: e.message
 					end
 
@@ -47,7 +46,6 @@ module VagrantPlugins
 							env[:machine].config.vm.hostname = "#{hostname}#{vm_id}"
 						end
 						params = create_params_qemu(config, env, vm_id, template_vm_id, selected_node)
-						# exit_status = connection(env).clone_vm node: node, vm_type: config.vm_type, params: params
 						exit_status = connection(env).clone_vm node: template_residing_node, vm_type: config.vm_type, params: params
 						exit_status == 'OK' ? exit_status : raise(VagrantPlugins::Proxmox::Errors::ProxmoxTaskFailed, proxmox_exit_status: exit_status)
 					rescue StandardError => e
@@ -55,6 +53,7 @@ module VagrantPlugins
 					end
 
 					env[:machine].id = "#{selected_node}/#{vm_id}"
+					$machine_state_changed = true
 
 					next_action env
 				end

@@ -11,16 +11,33 @@ module VagrantPlugins
 
         def get_machine_ip_address(env)
           config = env[:machine].provider_config
+
           if config.vm_type == :qemu
             ips = env[:machine].config.vm.networks.select {
               |type, iface| type == :forwarded_port and iface[:host_ip] != "127.0.0.1"
             }
             return ips.first[1][:host_ip] if not ips.empty?
 
-            node = env[:machine].id.split("/").first
-            vm_id = env[:machine].id.split("/").last
+            if env[:machine].id
+              node = env[:machine].id.split("/").first
+              vm_id = env[:machine].id.split("/").last
 
-            connection(env).qemu_agent_get_vm_ip(node, vm_id)
+              # We try to retrieve information about the VM from the stored information
+              # on disk, but the VM could have been moved, so we will query the cluster again
+              # to determin wether the VM is on another node if the initial connection fails
+              # qemu_agent_get_vm_ip executes a ping as first step, if this fails we can catch
+              # the error and try to retrieve new information about the VM
+              begin
+                connection(env).qemu_agent_get_vm_ip(node, vm_id)
+              rescue Errors::VMNotPingable
+                env[:ui].detail "VM #{vm_id} does not seem to be available on Node #{node}, fetching new Node data..."
+                cluster_data = connection(env).get_qemu_vm_data()
+                node = connection(env).get_qemu_vm_residing_node(cluster_data, vm_id)
+                env[:ui].detail "VM #{vm_id} is now on Node #{node}."
+                env[:machine].id = "#{node}/#{vm_id}"
+                connection(env).qemu_agent_get_vm_ip(node, vm_id)
+              end
+            end
           else
             env[:machine].config.vm.networks.select \
               { |type, _| type == :public_network }.first[1][:ip] || nil

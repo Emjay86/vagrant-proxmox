@@ -23,6 +23,10 @@ module VagrantPlugins
 				Provider
 			end
 
+			action_hook(:proxmox, :provisioner_run) do |hook|
+		    hook.after :run_provisioner, VagrantPlugins::Proxmox::Action::PostProvision
+		  end
+
 			# This initializes the internationalization strings.
 			def self.setup_i18n
 				I18n.load_path << File.expand_path('locales/en.yml', Proxmox.source_root)

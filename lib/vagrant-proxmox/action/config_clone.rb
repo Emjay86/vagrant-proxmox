@@ -35,9 +35,18 @@ module VagrantPlugins
 					else
 						"#{config.vm_name_prefix}#{env[:machine].name}:#{config.description}"
 					end
+					vm_name = if config.vm_name_prefix
+						if env[:machine].config.vm.hostname
+							"#{config.vm_name_prefix}#{env[:machine].config.vm.hostname}"
+						else
+							"#{config.vm_name_prefix}#{env[:machine].name.to_s}"
+						end
+					else
+						env[:machine].config.vm.hostname || env[:machine].name.to_s
+					end
 					params = {
 						vmid: vm_id,
-						name: env[:machine].config.vm.hostname || env[:machine].name.to_s,
+						name: vm_name,
 						sockets: config.qemu_sockets,
 						cores: config.qemu_cores,
 						memory: config.vm_memory,
@@ -47,9 +56,15 @@ module VagrantPlugins
 					if config.qemu_iso
 						params[:ide2] = "#{config.qemu_iso},media=cdrom"
 					end
+
+					if config.additional_disks
+						config.additional_disks.each do |disk, opts|
+							params[disk] = "#{opts}"
+						end
+					end
+
 					params
 				end
-
 			end
 		end
 	end

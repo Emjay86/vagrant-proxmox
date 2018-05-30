@@ -10,7 +10,7 @@ module VagrantPlugins
         end
 
 				def call env
-          env[:result] = env[:machine].state.id == :stopped
+          env[:result] = $machine_state[env[:machine].name] == :stopped
 					next_action env
 				end
 

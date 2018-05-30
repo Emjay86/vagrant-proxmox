@@ -19,7 +19,7 @@ module VagrantPlugins
 					rescue StandardError => e
 						raise VagrantPlugins::Proxmox::Errors::VMStopError, proxmox_exit_status: e.message
 					end
-
+					$machine_state_changed = true
 					next_action env
 				end
 

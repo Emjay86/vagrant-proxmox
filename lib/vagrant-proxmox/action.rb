@@ -96,6 +96,7 @@ module VagrantPlugins
 		def self.action_provision
 			Vagrant::Action::Builder.new.tap do |b|
 				b.use ConfigValidate
+				b.use ConnectProxmox
 				b.use Call, IsCreated do |env1, b1|
 					if env1[:result]
 						b1.use Call, IsStopped do |env2, b2|
@@ -235,7 +236,7 @@ module VagrantPlugins
 		autoload :SyncFolders, action_root.join('sync_folders')
 		autoload :UploadTemplateFile, action_root.join('upload_template_file')
 		autoload :UploadIsoFile, action_root.join('upload_iso_file')
-
+		autoload :PostProvision, action_root.join('post_provision')
 		end
 	end
 end

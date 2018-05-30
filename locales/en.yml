@@ -1,5 +1,7 @@
 en:
   vagrant_proxmox:
+    post_provision: |-
+      'Changing VLAN'
     already_running: 'The virtual machine is already up and running'
     already_stopped: "The virtual machine is already stopped"
     creating_vm: 'Creating the virtual machine...'
@@ -99,6 +101,10 @@ en:
         You've found a bug! Please create a new issue at https://github.com/lehn-etracker/vagrant-proxmox/issues
 
         Error-Msg: %{error_msg}
+      no_valid_ipv4: |-
+        No valid IPv4 address could be retrieved
+
+        %{interfaces}
     not_created: 'The virtual machine is not created on the server!'
     rsync_folder: |-
           Rsyncing folder: %{hostpath} => %{guestpath}
