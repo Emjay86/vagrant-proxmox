@@ -42,7 +42,7 @@ module VagrantPlugins
 
 						  config.qemu_vlan.each do |interface, vlan|
 								desired_config = "#{config.qemu_nic_model},bridge=#{config.qemu_bridge},tag=#{vlan}"
-								current_vlan = current_config[interface].match(/tag=(\d+)/)[1]
+								current_vlan = current_config[interface.to_sym].match(/tag=(\d+)/)[1]
 								if current_vlan.to_s == vlan.to_s
 									env[:ui].detail "VLAN #{vlan} is already set for interface #{interface}!"
 								else

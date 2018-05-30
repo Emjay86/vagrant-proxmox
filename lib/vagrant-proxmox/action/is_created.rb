@@ -10,8 +10,8 @@ module VagrantPlugins
 				end
 
 				def call env
-					# env[:result] = env[:machine].state.id != :not_created
-					env[:result] = $machine_state[env[:machine].name] = :not_created
+					env[:result] = env[:machine].state.id != :not_created
+					# env[:result] = $machine_state[env[:machine].name] = :not_created
 					next_action env
 				end
 			end

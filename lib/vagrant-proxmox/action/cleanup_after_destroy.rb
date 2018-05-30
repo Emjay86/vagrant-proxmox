@@ -9,7 +9,10 @@ module VagrantPlugins
 				end
 
 				def call env
-					FileUtils.rm_rf ".vagrant/machines/#{env[:machine].name}/proxmox"
+					Dir[".vagrant/machines/#{env[:machine].name}/proxmox/*"].each do |file|
+						puts "removing #{file}"
+						FileUtils.rm_rf file unless file.to_s.match(/vagrant_cwd$/)
+					end
 					next_action env
 				end
 
