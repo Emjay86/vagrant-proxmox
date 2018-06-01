@@ -28,7 +28,7 @@ module VagrantPlugins
         @ui = ui
       end
 
-      def login(username: required('username'), password: required('password'), vagrantfile_path: required('vagrantfile_path'))
+      def login(username: required('username'), vagrantfile_path: required('vagrantfile_path'))
         if $ticket.nil? || $csrf_token.nil?
           if File.file?("#{vagrantfile_path}/.proxmox_token")
             json = File.read("#{vagrantfile_path}/.proxmox_token")
@@ -38,18 +38,22 @@ module VagrantPlugins
 
             if  max_token_age.to_i > token_age.to_i
               @ui.warn "Token expired"
-              get_new_login username: username, password: password, vagrantfile_path: vagrantfile_path
+              get_new_login username: username, vagrantfile_path: vagrantfile_path
             else
               $ticket = data['ticket']
               $csrf_token = data['csrf_token']
             end
           else
-            get_new_login username: username, password: password, vagrantfile_path: vagrantfile_path
+            get_new_login username: username, vagrantfile_path: vagrantfile_path
           end
         end
       end
 
-      def get_new_login(username: required('username'), password: required('password'), vagrantfile_path: required('vagrantfile_path'))
+      def get_new_login(username: required('username'), vagrantfile_path: required('vagrantfile_path'))
+        printf "Proxmox password: "
+        password = STDIN.noecho(&:gets).chomp.to_s
+        puts
+
         begin
           response = post '/access/ticket', username: username, password: password
           date = Time.now.getutc

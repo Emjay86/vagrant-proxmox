@@ -21,7 +21,7 @@ module VagrantPlugins
 																				task_status_check_interval: config.task_status_check_interval,
 																				imgcopy_timeout: config.imgcopy_timeout,
 																				verify_ssl: config.verify_ssl
-						connection.login username: config.user_name, password: config.password, vagrantfile_path: env[:root_path]
+						connection.login username: config.user_name, vagrantfile_path: env[:root_path]
 						env[:proxmox_connection] = connection
 					rescue => e
 						raise Errors::CommunicationError, error_msg: e.message

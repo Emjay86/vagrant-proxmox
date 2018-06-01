@@ -60,11 +60,21 @@ module VagrantPlugins
 
 				private
 				def create_params_qemu(config, env, vm_id, template_vm_id, selected_node)
+					vm_name = if config.vm_name_prefix
+						if env[:machine].config.vm.hostname
+							"#{config.vm_name_prefix}#{env[:machine].config.vm.hostname}"
+						else
+							"#{config.vm_name_prefix}#{env[:machine].name.to_s}"
+						end
+					else
+						env[:machine].config.vm.hostname || env[:machine].name.to_s
+					end
+
 					# without network, which will added in ConfigClonedVm
 					{
 						vmid: template_vm_id,
 						newid: vm_id,
-						name: env[:machine].config.vm.hostname || env[:machine].name.to_s,
+						name: vm_name,
 						target: selected_node,
 						description: "#{config.vm_name_prefix}#{env[:machine].name}",
 						pool: config.pool,

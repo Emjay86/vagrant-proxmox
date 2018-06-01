@@ -17,11 +17,6 @@ module VagrantPlugins
       # @return [String]
       attr_accessor :user_name
 
-      # The Proxmox password
-      #
-      # @return [String]
-      attr_accessor :password
-
       # The virtual machine type, e.g. :openvz or :qemu or :lxc
       #
       # @return [Symbol]
@@ -345,7 +340,6 @@ module VagrantPlugins
         @endpoint = UNSET_VALUE
         @selected_node = UNSET_VALUE
         @user_name = UNSET_VALUE
-        @password = UNSET_VALUE
         @vm_type = UNSET_VALUE
         @openvz_os_template = UNSET_VALUE
         @openvz_template_file = UNSET_VALUE
@@ -410,7 +404,6 @@ module VagrantPlugins
         @endpoint = nil if @endpoint == UNSET_VALUE
         @selected_node = nil if @endpoint == UNSET_VALUE
         @user_name = nil if @user_name == UNSET_VALUE
-        @password = nil if @password == UNSET_VALUE
         @vm_type = nil if @vm_type == UNSET_VALUE
         @openvz_template_file = nil if @openvz_template_file == UNSET_VALUE
         @openvz_os_template = "local:vztmpl/#{File.basename @openvz_template_file}" if @openvz_template_file
@@ -435,7 +428,6 @@ module VagrantPlugins
         errors = []
         errors << I18n.t('vagrant_proxmox.errors.no_endpoint_specified') unless @endpoint
         errors << I18n.t('vagrant_proxmox.errors.no_user_name_specified') unless @user_name
-        errors << I18n.t('vagrant_proxmox.errors.no_password_specified') unless @password
         errors << I18n.t('vagrant_proxmox.errors.no_vm_type_specified') unless @vm_type
         if @vm_type == :openvz
           errors << I18n.t('vagrant_proxmox.errors.no_openvz_os_template_or_openvz_template_file_specified_for_type_openvz') unless @openvz_os_template || @openvz_template_file
